@@ -98,38 +98,59 @@ fn hide_file_in_image(path: &str) -> String {
 fn hide_file_in_logo(file: &str, logo: &str) -> String {
     let file = File::open(file).unwrap();
     let mut reader = BufReader::new(file);
-    let buf = reader.fill_buf().unwrap();
-    log::info!("src:\n{:?}", &buf);
-    let pixel_count = buf.len() / 4;
-    let pixel_count = pixel_count as u32;
-    let pixel_count = if (buf.len() % 4) == 0 {
-        pixel_count
-    } else {
-        pixel_count + 1
-    };
-    let width = (pixel_count as f32).sqrt();
-    let width = width as u32;
-    let mut heigth = width;
-    while (width * heigth) < pixel_count {
-        heigth += 1;
-    }
-    let mut imgbuf = image::ImageBuffer::new(width, heigth);
-    let mut i_buf = 0;
-    for x in 0..width {
-        for y in 0..heigth {
-            let pixel = imgbuf.get_pixel_mut(x, y);
-            let mut rgba = [0u8; 4];
-            for i in 0..rgba.len() {
-                if i_buf < buf.len() {
-                    rgba[i] = buf[i_buf];
-                    i_buf += 1;
-                }
-            }
-            *pixel = image::Rgba([rgba[0], rgba[1], rgba[2], rgba[3]]);
+    let file_buf = reader.fill_buf().unwrap();
+    let file_buf_len = format!("{:08x}", file_buf.len());
+    let point_00 = &file_buf_len[0..2];
+    let point_0w = &file_buf_len[2..4];
+    let point_h0 = &file_buf_len[4..6];
+    let point_hw = &file_buf_len[6..8];
+    log::info!(
+        "file buf size: {} {} {} {}",
+        point_00,
+        point_0w,
+        point_h0,
+        point_hw
+    );
+    let logo_img = image::open(logo).unwrap();
+    let mut logo_buf = logo_img.to_rgba8();
+    for (x, y, pixel) in logo_buf.enumerate_pixels_mut() {
+        // 左上
+        if x == 0 && y == 0 {
+            let a = u8::from_str_radix(&point_00, 16).unwrap();
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+        }
+        // 右上
+        else if x == 0 && y == logo_img.width() {
+            let a = u8::from_str_radix(&point_0w, 16).unwrap();
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+        }
+        // 左下
+        else if x == logo_img.height() && y == 0 {
+            let a = u8::from_str_radix(&point_h0, 16).unwrap();
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+        }
+        // 右下
+        else if x == logo_img.height() && y == logo_img.width() {
+            let a = u8::from_str_radix(&point_hw, 16).unwrap();
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
         }
     }
-    let output = "./data/file.png";
-    imgbuf.save(output).unwrap();
+
+    let y = 0;
+    for x in 0..logo_buf.height() {}
+
+    let x = logo_buf.height() - 1;
+    for y in 1..logo_buf.width() {}
+
+    let y = logo_buf.width() - 1;
+    for x in (logo_buf.height() - 1)..0 {}
+
+    let x = 0;
+    for y in (logo_buf.width() - 1)..0 {}
+    
+
+    let output = "./data/file_in_logo.png";
+    logo_buf.save(output).unwrap();
     output.to_string()
 }
 
