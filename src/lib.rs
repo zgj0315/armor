@@ -1,6 +1,7 @@
 use chrono::Local;
 use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use uuid::Uuid;
@@ -93,6 +94,45 @@ fn hide_file_in_image(path: &str) -> String {
     output.to_string()
 }
 
+// 四角长度，外边儿数据，绕着放
+fn hide_file_in_logo(file: &str, logo: &str) -> String {
+    let file = File::open(file).unwrap();
+    let mut reader = BufReader::new(file);
+    let buf = reader.fill_buf().unwrap();
+    log::info!("src:\n{:?}", &buf);
+    let pixel_count = buf.len() / 4;
+    let pixel_count = pixel_count as u32;
+    let pixel_count = if (buf.len() % 4) == 0 {
+        pixel_count
+    } else {
+        pixel_count + 1
+    };
+    let width = (pixel_count as f32).sqrt();
+    let width = width as u32;
+    let mut heigth = width;
+    while (width * heigth) < pixel_count {
+        heigth += 1;
+    }
+    let mut imgbuf = image::ImageBuffer::new(width, heigth);
+    let mut i_buf = 0;
+    for x in 0..width {
+        for y in 0..heigth {
+            let pixel = imgbuf.get_pixel_mut(x, y);
+            let mut rgba = [0u8; 4];
+            for i in 0..rgba.len() {
+                if i_buf < buf.len() {
+                    rgba[i] = buf[i_buf];
+                    i_buf += 1;
+                }
+            }
+            *pixel = image::Rgba([rgba[0], rgba[1], rgba[2], rgba[3]]);
+        }
+    }
+    let output = "./data/file.png";
+    imgbuf.save(output).unwrap();
+    output.to_string()
+}
+
 fn get_file_from_image(path: &str) -> String {
     let img = image::open(path).unwrap();
     let mut filebuf = Vec::new();
@@ -114,6 +154,29 @@ fn get_file_from_image(path: &str) -> String {
     let mut writer = BufWriter::new(File::create(output).unwrap());
     writer.write_all(&filebuf).unwrap();
     output.to_string()
+}
+
+fn read_image(path: &str) {
+    let img = image::open(path).unwrap();
+    let imgbuf = img.to_rgba8();
+    let mut pixel_map = HashMap::new();
+    for x in 0..img.width() {
+        for y in 0..img.height() {
+            let pixel = imgbuf.get_pixel(x, y);
+            let pixel_key = format!("{},{},{},{}", pixel[0], pixel[1], pixel[2], pixel[3]);
+            if x < 25 || x >= 475 || y < 25 || y >= 475 {
+                log::info!("({},{}) rgbr: [{}]", x, y, &pixel_key);
+                let count = match pixel_map.get(&pixel_key) {
+                    Some(count) => *count + 1,
+                    None => 1,
+                };
+                pixel_map.insert(pixel_key, count);
+            }
+        }
+    }
+    for (key, count) in pixel_map {
+        log::info!("{}--{}", key, count);
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -184,5 +247,25 @@ mod tests {
         log::info!("hide file in path: {}", &path);
         let path = get_file_from_image(&path);
         log::info!("get file: {}", &path);
+    }
+
+    // cargo test tests::test_read_image
+    #[test]
+    fn test_read_image() {
+        log_init();
+        let path = "./data/cyberkl.png";
+        log::info!("image: {}", &path);
+        read_image(&path);
+    }
+
+    // cargo test tests::test_hide_file_in_logo
+    #[test]
+    fn test_hide_file_in_logo() {
+        log_init();
+        let logo = "./data/logo.png";
+        log::info!("logo: {}", &logo);
+        let file = "./src/lib.rs";
+        log::info!("file: {}", &file);
+        hide_file_in_logo(file, logo);
     }
 }
