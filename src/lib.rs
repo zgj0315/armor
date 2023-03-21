@@ -2,7 +2,7 @@ use chrono::Local;
 use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use uuid::Uuid;
 
 fn make_sha256() -> String {
@@ -14,7 +14,7 @@ fn make_sha256() -> String {
     hex::encode(Sha256::digest(key))
 }
 
-fn hide_sha256_in_image(sha256: String) {
+fn hide_sha256_in_image(sha256: String) -> String {
     let imgx = 4;
     let imgy = 2;
     let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
@@ -33,11 +33,13 @@ fn hide_sha256_in_image(sha256: String) {
             *pixel = image::Rgba([r, g, b, a]);
         }
     }
-    imgbuf.save("./data/sha256.png").unwrap();
+    let output = "./data/sha256.png";
+    imgbuf.save(output).unwrap();
+    output.to_string()
 }
 
-fn get_sha256_from_image() -> String {
-    let img = image::open("./data/sha256.png").unwrap();
+fn get_sha256_from_image(path: &str) -> String {
+    let img = image::open(path).unwrap();
     let mut sha256 = String::new();
     let imgbuf = img.to_rgba8();
     for x in 0..img.width() {
@@ -53,10 +55,11 @@ fn get_sha256_from_image() -> String {
     sha256
 }
 
-fn hide_file_in_image(path: &str) {
+fn hide_file_in_image(path: &str) -> String {
     let file = File::open(path).unwrap();
     let mut reader = BufReader::new(file);
     let buf = reader.fill_buf().unwrap();
+    log::info!("src:\n{:?}", &buf);
     let pixel_count = buf.len() / 4;
     let pixel_count = pixel_count as u32;
     let pixel_count = if (buf.len() % 4) == 0 {
@@ -85,9 +88,33 @@ fn hide_file_in_image(path: &str) {
             *pixel = image::Rgba([rgba[0], rgba[1], rgba[2], rgba[3]]);
         }
     }
-    imgbuf.save("./data/file.png").unwrap();
+    let output = "./data/file.png";
+    imgbuf.save(output).unwrap();
+    output.to_string()
 }
 
+fn get_file_from_image(path: &str) -> String {
+    let img = image::open(path).unwrap();
+    let mut filebuf = Vec::new();
+    let imgbuf = img.to_rgba8();
+    for x in 0..img.width() {
+        for y in 0..img.height() {
+            let pixel = imgbuf.get_pixel(x, y);
+            filebuf.push(pixel[0]);
+            filebuf.push(pixel[1]);
+            filebuf.push(pixel[2]);
+            filebuf.push(pixel[3]);
+        }
+    }
+    while filebuf[filebuf.len() - 1] == 0 {
+        filebuf.remove(filebuf.len() - 1);
+    }
+    log::info!("get:\n{:?}", &filebuf);
+    let output = "./data/file_src.png";
+    let mut writer = BufWriter::new(File::create(output).unwrap());
+    writer.write_all(&filebuf).unwrap();
+    output.to_string()
+}
 #[cfg(test)]
 mod tests {
     use dev_util::log::log_init;
@@ -109,7 +136,8 @@ mod tests {
         log_init();
         let sha256 = make_sha256();
         log::info!("sha256: {}", sha256);
-        hide_sha256_in_image(sha256);
+        let path = hide_sha256_in_image(sha256);
+        log::info!("hide in file: {}", path);
     }
     // cargo test tests::test_get_sha256_from_image
     #[test]
@@ -117,8 +145,9 @@ mod tests {
         log_init();
         let sha256 = make_sha256();
         log::info!("sha256 input : {}", sha256);
-        hide_sha256_in_image(sha256);
-        let sha256 = get_sha256_from_image();
+        let path = hide_sha256_in_image(sha256);
+        log::info!("hide in file: {}", &path);
+        let sha256 = get_sha256_from_image(&path);
         log::info!("sha256 output: {}", sha256);
     }
 
@@ -126,7 +155,34 @@ mod tests {
     #[test]
     fn test_hide_file_in_image() {
         log_init();
-        let path = "./data/private.key";
-        hide_file_in_image(path);
+        let path = hide_file_in_image("./data/sha256.png");
+        log::info!("hide in file: {}", &path);
+    }
+    // cargo test tests::test_get_file_from_image
+    #[test]
+    fn test_get_file_from_image() {
+        log_init();
+        let sha256 = make_sha256();
+        log::info!("sha256 input : {}", sha256);
+        let path = hide_sha256_in_image(sha256);
+        log::info!("hide sha256 in file: {}", &path);
+        let path = hide_file_in_image(&path);
+        log::info!("hide file in path: {}", &path);
+        let path = get_file_from_image(&path);
+        log::info!("get file: {}", &path);
+        let sha256 = get_sha256_from_image(&path);
+        log::info!("get    sha256: {}", sha256);
+    }
+
+    // cargo test tests::test_it_works
+    #[test]
+    fn test_it_works() {
+        log_init();
+        let path = "./src/lib.rs";
+        log::info!("hide file in image: {}", &path);
+        let path = hide_file_in_image(&path);
+        log::info!("hide file in path: {}", &path);
+        let path = get_file_from_image(&path);
+        log::info!("get file: {}", &path);
     }
 }
