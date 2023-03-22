@@ -3,7 +3,7 @@ use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use uuid::Uuid;
 
 fn make_sha256() -> String {
@@ -94,11 +94,12 @@ fn hide_file_in_image(path: &str) -> String {
     output.to_string()
 }
 
-// 四角长度，外边儿数据，绕着放
 fn hide_file_in_logo(file: &str, logo: &str) -> String {
     let file = File::open(file).unwrap();
     let mut reader = BufReader::new(file);
-    let file_buf = reader.fill_buf().unwrap();
+    let mut file_buf = Vec::new();
+    reader.read_to_end(&mut file_buf).unwrap();
+    log::info!("file len: {}", file_buf.len());
     let file_buf_len = format!("{:08x}", file_buf.len());
     let point_00 = &file_buf_len[0..2];
     let point_0w = &file_buf_len[2..4];
@@ -139,56 +140,79 @@ fn hide_file_in_logo(file: &str, logo: &str) -> String {
     let h = logo_buf.height();
 
     let mut file_buf_i = 0;
-    // 共计25圈
-    'for_25: for i in 0..25 {
+    'for_plane: for i in 0..50 {
         // 上边，左-->右
         let y = i;
-        for x in i..=(w - 1 - i) {
+        'for_line: for x in i..=(w - 1 - i) {
             if file_buf_i >= file_buf.len() {
-                break 'for_25;
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
             }
             let pixel = logo_buf.get_pixel_mut(x, y);
             *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
             file_buf_i += 1;
-            // log::info!("({:03}, {:03})", x, y);
         }
 
         // 右边，上-->下
         let x = w - 1 - i;
-        for y in (1 + i)..=(h - 1 - i) {
+        'for_line: for y in (1 + i)..=(h - 1 - i) {
             if file_buf_i >= file_buf.len() {
-                break 'for_25;
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
             }
             let pixel = logo_buf.get_pixel_mut(x, y);
             *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
             file_buf_i += 1;
-            // log::info!("({:03}, {:03})", x, y);
         }
 
         // 下边，右-->左
         let y = h - 1 - i;
-        for x in i..=(w - 2 - i) {
+        'for_line: for x in i..=(w - 2 - i) {
             let x = w - 2 - x;
             if file_buf_i >= file_buf.len() {
-                break 'for_25;
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
             }
             let pixel = logo_buf.get_pixel_mut(x, y);
             *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
             file_buf_i += 1;
-            // log::info!("({:03}, {:03})", x, y);
         }
 
         // 左边，下-->上
         let x = i;
-        for y in (1 + i)..=(h - 2 - i) {
+        'for_line: for y in (1 + i)..=(h - 2 - i) {
             let y = h - 1 - y;
             if file_buf_i >= file_buf.len() {
-                break 'for_25;
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
             }
             let pixel = logo_buf.get_pixel_mut(x, y);
             *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
             file_buf_i += 1;
-            // log::info!("({:03}, {:03})", x, y);
         }
     }
     let output = "./data/file_in_logo.png";
@@ -196,6 +220,110 @@ fn hide_file_in_logo(file: &str, logo: &str) -> String {
     output.to_string()
 }
 
+fn get_file_in_logo(logo: &str) -> String {
+    let logo_img = image::open(logo).unwrap();
+    let logo_buf = logo_img.to_rgba8();
+    let w = logo_buf.width();
+    let h = logo_buf.height();
+
+    // 左上角
+    let pixel = logo_buf.get_pixel(0, 0);
+    let point_00 = 256 * 256 * 256 * (pixel[3] as u64);
+    // 右上角
+    let pixel = logo_buf.get_pixel(0, w - 1);
+    let point_0w = 256 * 256 * (pixel[3] as u64);
+    // 左下角
+    let pixel = logo_buf.get_pixel(h - 1, 0);
+    let point_h0 = 256 * (pixel[3] as u64);
+    // 右下角
+    let pixel = logo_buf.get_pixel(h - 1, w - 1);
+    let point_hw = pixel[3] as u64;
+
+    let file_len = point_00 + point_0w + point_h0 + point_hw;
+    log::info!("file len: {}", file_len);
+
+    let mut file_buf = Vec::new();
+    let mut file_buf_i = 0;
+    'for_plane: for i in 0..50 {
+        // 上边，左-->右
+        let y = i;
+        'for_line: for x in i..=(w - 1 - i) {
+            if file_buf_i >= file_len {
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
+            }
+            let pixel = logo_buf.get_pixel(x, y);
+            file_buf.push(pixel[3]);
+            file_buf_i += 1;
+        }
+
+        // 右边，上-->下
+        let x = w - 1 - i;
+        'for_line: for y in (1 + i)..=(h - 1 - i) {
+            if file_buf_i >= file_len {
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
+            }
+            let pixel = logo_buf.get_pixel(x, y);
+            file_buf.push(pixel[3]);
+            file_buf_i += 1;
+        }
+
+        // 下边，右-->左
+        let y = h - 1 - i;
+        'for_line: for x in i..=(w - 2 - i) {
+            let x = w - 2 - x;
+            if file_buf_i >= file_len {
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
+            }
+            let pixel = logo_buf.get_pixel(x, y);
+            file_buf.push(pixel[3]);
+            file_buf_i += 1;
+        }
+
+        // 左边，下-->上
+        let x = i;
+        'for_line: for y in (1 + i)..=(h - 2 - i) {
+            let y = h - 1 - y;
+            if file_buf_i >= file_len {
+                break 'for_plane;
+            }
+            if (x == 0 && y == 0)
+                || (x == 0 && y == (h - 1))
+                || (x == (w - 1) && y == (h - 1))
+                || (x == (w - 1) && y == 0)
+            {
+                continue 'for_line;
+            }
+            let pixel = logo_buf.get_pixel(x, y);
+            file_buf.push(pixel[3]);
+            file_buf_i += 1;
+        }
+    }
+    let output = "./data/file_src";
+    let mut writer = BufWriter::new(File::create(output).unwrap());
+    writer.write_all(&file_buf).unwrap();
+    output.to_string()
+}
 fn get_file_from_image(path: &str) -> String {
     let img = image::open(path).unwrap();
     let mut filebuf = Vec::new();
@@ -329,6 +457,7 @@ mod tests {
         log::info!("logo: {}", &logo);
         let file = "./src/lib.rs";
         log::info!("file: {}", &file);
-        hide_file_in_logo(file, logo);
+        let file_in_logo = hide_file_in_logo(file, logo);
+        get_file_in_logo(&file_in_logo);
     }
 }
