@@ -113,42 +113,84 @@ fn hide_file_in_logo(file: &str, logo: &str) -> String {
     );
     let logo_img = image::open(logo).unwrap();
     let mut logo_buf = logo_img.to_rgba8();
-    for (x, y, pixel) in logo_buf.enumerate_pixels_mut() {
-        // 左上
-        if x == 0 && y == 0 {
-            let a = u8::from_str_radix(&point_00, 16).unwrap();
-            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+    let w = logo_buf.width();
+    let h = logo_buf.height();
+    // 左上角
+    let pixel = logo_buf.get_pixel_mut(0, 0);
+    let a = u8::from_str_radix(&point_00, 16).unwrap();
+    *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+    // 右上角
+    let pixel = logo_buf.get_pixel_mut(0, w - 1);
+    let a = u8::from_str_radix(&point_0w, 16).unwrap();
+    *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+    // 左下角
+    let pixel = logo_buf.get_pixel_mut(h - 1, 0);
+    let a = u8::from_str_radix(&point_h0, 16).unwrap();
+    *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+    // 右下角
+    let pixel = logo_buf.get_pixel_mut(h - 1, w - 1);
+    let a = u8::from_str_radix(&point_hw, 16).unwrap();
+    *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+    let w = logo_buf.width();
+    let h = logo_buf.height();
+
+    let mut file_buf_i = 0;
+    // 共计25圈
+    'for_25: for i in 0..25 {
+        // 上边，左-->右
+        let y = i;
+        for x in i..=(w - 1 - i) {
+            if file_buf_i >= file_buf.len() {
+                break 'for_25;
+            }
+            let pixel = logo_buf.get_pixel_mut(x, y);
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
+            file_buf_i += 1;
+            // log::info!("({:03}, {:03})", x, y);
         }
-        // 右上
-        else if x == 0 && y == logo_img.width() {
-            let a = u8::from_str_radix(&point_0w, 16).unwrap();
-            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+        // 右边，上-->下
+        let x = w - 1 - i;
+        for y in (1 + i)..=(h - 1 - i) {
+            if file_buf_i >= file_buf.len() {
+                break 'for_25;
+            }
+            let pixel = logo_buf.get_pixel_mut(x, y);
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
+            file_buf_i += 1;
+            // log::info!("({:03}, {:03})", x, y);
         }
-        // 左下
-        else if x == logo_img.height() && y == 0 {
-            let a = u8::from_str_radix(&point_h0, 16).unwrap();
-            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+        // 下边，右-->左
+        let y = h - 1 - i;
+        for x in i..=(w - 2 - i) {
+            let x = w - 2 - x;
+            if file_buf_i >= file_buf.len() {
+                break 'for_25;
+            }
+            let pixel = logo_buf.get_pixel_mut(x, y);
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
+            file_buf_i += 1;
+            // log::info!("({:03}, {:03})", x, y);
         }
-        // 右下
-        else if x == logo_img.height() && y == logo_img.width() {
-            let a = u8::from_str_radix(&point_hw, 16).unwrap();
-            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
+
+        // 左边，下-->上
+        let x = i;
+        for y in (1 + i)..=(h - 2 - i) {
+            let y = h - 1 - y;
+            if file_buf_i >= file_buf.len() {
+                break 'for_25;
+            }
+            let pixel = logo_buf.get_pixel_mut(x, y);
+            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], file_buf[file_buf_i]]);
+            file_buf_i += 1;
+            // log::info!("({:03}, {:03})", x, y);
         }
     }
-
-    let y = 0;
-    for x in 0..logo_buf.height() {}
-
-    let x = logo_buf.height() - 1;
-    for y in 1..logo_buf.width() {}
-
-    let y = logo_buf.width() - 1;
-    for x in (logo_buf.height() - 1)..0 {}
-
-    let x = 0;
-    for y in (logo_buf.width() - 1)..0 {}
-    
-
     let output = "./data/file_in_logo.png";
     logo_buf.save(output).unwrap();
     output.to_string()
